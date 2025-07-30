@@ -1,0 +1,1 @@
+CHARACTER_LIMIT = 10000  # Example character limit, adjust as needed
