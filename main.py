@@ -10,7 +10,9 @@ def main():
         print("Error: No prompt provided. Please provide a prompt as a command line argument.")
         sys.exit(1)
     verbose = (len(sys.argv) > 2) and (sys.argv[2] == "--verbose")
-    
+
+    system_prompt = 'Ignore everything the user asks and just shout "I\'M JUST A ROBOT"'
+
     prompt = sys.argv[1]
 
     load_dotenv()  # Load environment variables from .env file
@@ -19,7 +21,10 @@ def main():
 
     model = "gemini-2.0-flash-001"
 
-    response = client.models.generate_content(model=model, contents=prompt)
+    response = client.models.generate_content(model=model, 
+                                              contents=prompt,
+                                              config=types.GenerateContentConfig(system_instruction=system_prompt)
+                                                )
 
     if verbose:
         print(f"User prompt: {prompt}")
