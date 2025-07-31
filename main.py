@@ -23,8 +23,13 @@ When a user asks a question or makes a request, make a function call plan. You c
 
 - List files and directories
 - Read file contents
-- Execute Python files with optional arguments
+- Execute Python files with optional arguments (omit the 'args' field if no arguments are needed)
 - Write or overwrite files
+
+If a Python file does not require arguments, do not include the 'args' field at all.
+
+Example: To run a Python file with no arguments, call:
+run_python_file(file_path="tests.py")
 
 All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
 """
@@ -65,15 +70,63 @@ All paths you provide should be relative to the working directory. You do not ne
 
     if hasattr(response, 'function_calls') and response.function_calls:
         for function_call_part in response.function_calls:
-            print(f"Calling function: {function_call_part.name}({function_call_part.args})")
-
+            function_call_result = call_function(function_call_part, verbose=verbose)
+            # Check for function response
+            if not (hasattr(function_call_result.parts[0], 'function_response') and hasattr(function_call_result.parts[0].function_response, 'response')):
+                raise RuntimeError("Function call did not return a valid function_response.")
+            if verbose:
+                print(f"-> {function_call_result.parts[0].function_response.response}")
 
         print(response.text)
         print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
         print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
-    else:   
+    else:
         print(response.text)
 
 
+def call_function(function_call_part, verbose=False):
+    function_name = function_call_part.name
+    args = dict(function_call_part.args)
+    # Always inject working_directory
+    args["working_directory"] = "./calculator"
+
+    function_map = {
+        "get_files_info": get_files_info,
+        "get_file_content": get_file_content,
+        "run_python_file": run_python_file,
+        "write_file": write_file,
+    }
+
+    if verbose:
+        print(f"Calling function: {function_name}({args})")
+    else:
+        print(f" - Calling function: {function_name}")
+
+    func = function_map.get(function_name)
+    if not func:
+        return types.Content(
+            role="tool",
+            parts=[
+                types.Part.from_function_response(
+                    name=function_name,
+                    response={"error": f"Unknown function: {function_name}"},
+                )
+            ],
+        )
+
+    try:
+        function_result = func(**args)
+    except Exception as e:
+        function_result = f"Exception during function call: {e}"
+
+    return types.Content(
+        role="tool",
+        parts=[
+            types.Part.from_function_response(
+                name=function_name,
+                response={"result": function_result},
+            )
+        ],
+    )
 if __name__ == "__main__":
     main()

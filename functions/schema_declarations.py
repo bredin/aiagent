@@ -30,7 +30,7 @@ schema_get_file_content = types.FunctionDeclaration(
 
 schema_run_python_file = types.FunctionDeclaration(
     name="run_python_file",
-    description="Executes a Python file with optional arguments, constrained to the working directory.",
+    description="Executes a Python file with optional arguments, constrained to the working directory. The 'args' field is optional and should be omitted if not needed.",
     parameters=types.Schema(
         type=types.Type.OBJECT,
         properties={
@@ -41,9 +41,10 @@ schema_run_python_file = types.FunctionDeclaration(
             "args": types.Schema(
                 type=types.Type.ARRAY,
                 items=types.Schema(type=types.Type.STRING),
-                description="Optional list of arguments to pass to the Python file.",
+                description="Optional list of arguments to pass to the Python file. Omit this field if no arguments are needed.",
             ),
         },
+        required=["file_path"],
     ),
 )
 
