@@ -50,38 +50,61 @@ All paths you provide should be relative to the working directory. You do not ne
         ]
     )
 
-
     load_dotenv()  # Load environment variables from .env file
     gemini_api_key = os.getenv("GEMINI_API_KEY")
     client = genai.Client(api_key=gemini_api_key)
-
     model = "gemini-2.0-flash-001"
 
-    response = client.models.generate_content(model=model, 
-                                              contents=prompt,
-                                              config=types.GenerateContentConfig(
-                                                  system_instruction=system_prompt,
-                                                  tools=[available_functions]
-                                                  )
-                                              )
-
-    if verbose:
-        print(f"User prompt: {prompt}")
-
-    if hasattr(response, 'function_calls') and response.function_calls:
-        for function_call_part in response.function_calls:
-            function_call_result = call_function(function_call_part, verbose=verbose)
-            # Check for function response
-            if not (hasattr(function_call_result.parts[0], 'function_response') and hasattr(function_call_result.parts[0].function_response, 'response')):
-                raise RuntimeError("Function call did not return a valid function_response.")
+    # Conversation loop
+    messages = [types.Content(role="user", parts=[types.Part.from_text(text=prompt)])]
+    final_response = None
+    try:
+        for step in range(20):
+            response = client.models.generate_content(
+                model=model,
+                contents=messages,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    tools=[available_functions]
+                )
+            )
             if verbose:
-                print(f"-> {function_call_result.parts[0].function_response.response}")
+                print(f"\n--- LLM Response Step {step+1} ---")
+                print(f"Prompt tokens: {getattr(response.usage_metadata, 'prompt_token_count', '?')}")
+                print(f"Response tokens: {getattr(response.usage_metadata, 'candidates_token_count', '?')}")
 
-        print(response.text)
-        print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
-        print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
-    else:
-        print(response.text)
+            # Add all candidate contents to messages
+            if hasattr(response, 'candidates') and response.candidates:
+                for candidate in response.candidates:
+                    messages.append(candidate.content)
+                    # If the candidate has .text, it's a final answer
+                    if hasattr(candidate, 'text') and candidate.text:
+                        final_response = candidate.text
+                        break
+                if final_response:
+                    print(final_response)
+                    break
+
+            # Otherwise, handle tool calls
+            if hasattr(response, 'function_calls') and response.function_calls:
+                for function_call_part in response.function_calls:
+                    function_call_result = call_function(function_call_part, verbose=verbose)
+                    # Check for function response
+                    if not (hasattr(function_call_result.parts[0], 'function_response') and hasattr(function_call_result.parts[0].function_response, 'response')):
+                        raise RuntimeError("Function call did not return a valid function_response.")
+                    if verbose:
+                        print(f"-> {function_call_result.parts[0].function_response.response}")
+                    # Add tool response to messages
+                    messages.append(function_call_result)
+            else:
+                # If no function calls and no final response, print what we have and break
+                if hasattr(response, 'text') and response.text:
+                    print(response.text)
+                break
+        else:
+            print("Max iterations reached without a final response.")
+    except Exception as e:
+        print(f"Error during conversation loop: {e}")
 
 
 def call_function(function_call_part, verbose=False):
